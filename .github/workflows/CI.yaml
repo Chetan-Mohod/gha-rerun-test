@@ -22,7 +22,7 @@ jobs:
 
       - name: Trigger DEV CD Deployment
         run: |
-          gh workflow run cd.yml \
+          gh workflow run CD-job.yaml \
           -f environment="dev" \
           -f image="1.0.${{ github.run_number }}" \
           -f run_post_deployment="false" \
