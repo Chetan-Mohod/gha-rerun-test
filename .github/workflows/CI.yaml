@@ -5,28 +5,30 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  workflows: write  # required to trigger another workflow
+
 jobs:
 
   build:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build Application
         run: |
           echo "Building application..."
-          echo "Build completed"
+          echo "Build completed successfully"
 
-      - name: Trigger DEV CD Deployment
+      - name: Trigger DEV CD
         run: |
           gh workflow run CD-job.yaml \
           -f environment="dev" \
           -f image="1.0.${{ github.run_number }}" \
           -f run_post_deployment="false" \
           -f post_deployment_check="true"
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
