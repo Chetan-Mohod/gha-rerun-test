@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
+
   check:
     runs-on: ubuntu-latest
     outputs:
@@ -15,7 +16,8 @@ jobs:
           LAST=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=success&per_page=1" \
             | jq -r '.workflow_runs[0].id')
-          if [[ $LAST != "null" && ${{ github.run_attempt }} -gt 1 ]]; then
+
+          if [[ "$LAST" != "null" && ${{ github.run_attempt }} -gt 1 ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT
