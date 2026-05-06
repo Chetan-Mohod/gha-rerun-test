@@ -1,7 +1,6 @@
 name: Multi-Job Minimal Rerun
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
