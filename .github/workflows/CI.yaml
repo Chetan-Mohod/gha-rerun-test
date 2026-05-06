@@ -7,21 +7,17 @@ on:
 
 permissions:
   contents: read
-  workflows: write  # required to trigger another workflow
+  workflows: write   # allows triggering another workflow
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Build Application
-        run: |
-          echo "Building application..."
-          echo "Build completed successfully"
+      - name: Build
+        run: echo "Building application"
 
       - name: Trigger DEV CD
         run: |
