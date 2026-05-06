@@ -2,11 +2,9 @@ name: CD Pipeline
 
 on:
   workflow_dispatch:
-
     inputs:
-
       environment:
-        description: 'Environment'
+        description: 'Select Environment'
         required: true
         type: choice
         options:
@@ -15,6 +13,11 @@ on:
           - uat
           - prod
 
+      image:
+        description: 'Build Version'
+        required: true
+        type: string
+
       run_post_deployment:
         description: 'Run Post Deployment'
         required: true
@@ -22,7 +25,7 @@ on:
         type: boolean
 
       post_deployment_check:
-        description: 'Enable post deployment'
+        description: 'Use sqlcmd -b'
         required: true
         default: true
         type: boolean
@@ -31,26 +34,24 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Deploy
+      - name: Deploy Application
         run: |
-          echo "Deploying to ${{ github.event.inputs.environment }}"
+          echo "Deploying image: ${{ github.event.inputs.image }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
 
   post-deploy:
     runs-on: ubuntu-latest
     needs: deploy
-
     if: github.event.inputs.run_post_deployment == 'true'
-
     steps:
-
-      - name: Post Deployment
+      - name: Post Deployment Script
         run: |
-
           if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
-            echo "Running with -b"
+            echo "Running Post Deployment WITH -b"
           else
-            echo "Running without -b"
+            echo "Running Post Deployment WITHOUT -b"
           fi
