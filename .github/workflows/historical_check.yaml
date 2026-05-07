@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      run_jobA: ${{ steps.check.outputs.run_jobA }}
       run_jobB: ${{ steps.check.outputs.run_jobB }}
 
     steps:
@@ -28,12 +27,11 @@ jobs:
 
           WORKFLOW_NAME="${{ github.workflow }}"
 
-          # Get ONLY this workflow runs
-          runs=$(curl -s \
+          workflows=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows")
 
-          workflow_id=$(echo "$runs" | jq -r \
+          workflow_id=$(echo "$workflows" | jq -r \
             '.workflows[] | select(.name=="'"$WORKFLOW_NAME"'") | .id')
 
           echo "Workflow ID: $workflow_id"
@@ -44,10 +42,9 @@ jobs:
 
           total_runs=$(echo "$workflow_runs" | jq '.workflow_runs | length')
 
-          echo "Total Workflow Runs: $total_runs"
+          echo "Total Runs: $total_runs"
 
-          # Default = run jobs
-          run_jobA=true
+          # Default = RUN JOB B
           run_jobB=true
 
           # FIRST RUN
@@ -55,13 +52,12 @@ jobs:
 
             echo "First run detected"
 
-            echo "run_jobA=true" >> $GITHUB_OUTPUT
             echo "run_jobB=true" >> $GITHUB_OUTPUT
 
             exit 0
           fi
 
-          # Get PREVIOUS RUN only
+          # Get previous run
           previous_run_id=$(echo "$workflow_runs" | jq -r \
             ".workflow_runs[] | select(.id != ${{ github.run_id }}) | .id" | head -n 1)
 
@@ -71,30 +67,21 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/actions/runs/$previous_run_id/jobs")
 
-          jobA_status=$(echo "$jobs" | jq -r \
-            '.jobs[] | select(.name=="JOB A") | .conclusion')
-
           jobB_status=$(echo "$jobs" | jq -r \
             '.jobs[] | select(.name=="JOB B") | .conclusion')
 
-          echo "JOB A Previous Status: $jobA_status"
-          echo "JOB B Previous Status: $jobB_status"
+          echo "Previous JOB B Status: $jobB_status"
 
-          # SKIP already successful jobs
-          if [[ "$jobA_status" == "success" ]]; then
-            run_jobA=false
-          fi
-
+          # If JOB B already succeeded → SKIP it
           if [[ "$jobB_status" == "success" ]]; then
+
+            echo "JOB B already successful previously"
+
             run_jobB=false
           fi
 
-          echo ""
-          echo "Final Decisions"
-          echo "Run JOB A: $run_jobA"
-          echo "Run JOB B: $run_jobB"
+          echo "Run JOB B = $run_jobB"
 
-          echo "run_jobA=$run_jobA" >> $GITHUB_OUTPUT
           echo "run_jobB=$run_jobB" >> $GITHUB_OUTPUT
 
   jobA:
@@ -105,8 +92,7 @@ jobs:
     needs:
       - history-check
 
-    if: needs.history-check.outputs.run_jobA == 'true'
-
+    # ALWAYS RUN
     steps:
       - run: |
           echo "Running JOB A"
@@ -119,6 +105,7 @@ jobs:
     needs:
       - history-check
 
+    # CONDITIONAL RUN
     if: needs.history-check.outputs.run_jobB == 'true'
 
     steps:
@@ -140,7 +127,7 @@ jobs:
     steps:
       - run: |
 
-          echo "================================="
+          echo "=================================="
           echo "JOB A RESULT: ${{ needs.jobA.result }}"
           echo "JOB B RESULT: ${{ needs.jobB.result }}"
-          echo "================================="
+          echo "=================================="
