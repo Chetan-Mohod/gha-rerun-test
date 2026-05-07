@@ -1,4 +1,4 @@
-name: CD Pipeline
+name: CD Pipeline - Jobs
 
 on:
 
@@ -16,6 +16,7 @@ on:
         required: true
         type: choice
         options:
+          - dev
           - qa
           - uat
           - prod
@@ -34,41 +35,158 @@ on:
 
 jobs:
 
-  deploy-dev:
-    if: github.event_name == 'workflow_run'
+###################################################
+# DEV DEPLOY
+###################################################
+
+  dev_deploy:
+    if: |
+      github.event_name == 'workflow_run' ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.environment == 'dev')
+
+    name: DEV Deploy
     runs-on: ubuntu-latest
+    environment: DEV
 
     steps:
-
-      - name: DEV Deploy
-        run: echo "Auto Deploying to DEV"
-
-  deploy-manual:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-
-    steps:
-
-      - name: Manual Deploy
+      - name: Deploy DEV
         run: |
-          echo "Deploying to ${{ github.event.inputs.environment }}"
+          echo "Deploying to DEV"
 
-  post-deploy:
-    needs: deploy-manual
+  dev_post_deploy:
+    needs: dev_deploy
 
     if: |
       github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.environment == 'dev' &&
       github.event.inputs.run_post_deployment == 'true'
 
+    name: DEV Post Deploy
     runs-on: ubuntu-latest
+    environment: DEV
 
     steps:
 
-      - name: Post Deployment
+      - name: DEV Post Deployment
         run: |
 
           if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
-            echo "Running WITH -b"
+            echo "Running DEV Post Deployment WITH -b"
           else
-            echo "Running WITHOUT -b"
+            echo "Running DEV Post Deployment WITHOUT -b"
+          fi
+
+###################################################
+# QA DEPLOY
+###################################################
+
+  qa_deploy:
+    if: github.event.inputs.environment == 'qa'
+
+    name: QA Deploy
+    runs-on: ubuntu-latest
+    environment: QA
+
+    steps:
+      - name: Deploy QA
+        run: |
+          echo "Deploying to QA"
+
+  qa_post_deploy:
+    needs: qa_deploy
+
+    if: |
+      github.event.inputs.environment == 'qa' &&
+      github.event.inputs.run_post_deployment == 'true'
+
+    name: QA Post Deploy
+    runs-on: ubuntu-latest
+    environment: QA
+
+    steps:
+
+      - name: QA Post Deployment
+        run: |
+
+          if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
+            echo "Running QA Post Deployment WITH -b"
+          else
+            echo "Running QA Post Deployment WITHOUT -b"
+          fi
+
+###################################################
+# UAT DEPLOY
+###################################################
+
+  uat_deploy:
+    if: github.event.inputs.environment == 'uat'
+
+    name: UAT Deploy
+    runs-on: ubuntu-latest
+    environment: UAT
+
+    steps:
+      - name: Deploy UAT
+        run: |
+          echo "Deploying to UAT"
+
+  uat_post_deploy:
+    needs: uat_deploy
+
+    if: |
+      github.event.inputs.environment == 'uat' &&
+      github.event.inputs.run_post_deployment == 'true'
+
+    name: UAT Post Deploy
+    runs-on: ubuntu-latest
+    environment: UAT
+
+    steps:
+
+      - name: UAT Post Deployment
+        run: |
+
+          if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
+            echo "Running UAT Post Deployment WITH -b"
+          else
+            echo "Running UAT Post Deployment WITHOUT -b"
+          fi
+
+###################################################
+# PROD DEPLOY
+###################################################
+
+  prod_deploy:
+    if: github.event.inputs.environment == 'prod'
+
+    name: PROD Deploy
+    runs-on: ubuntu-latest
+    environment: PROD
+
+    steps:
+      - name: Deploy PROD
+        run: |
+          echo "Deploying to PROD"
+
+  prod_post_deploy:
+    needs: prod_deploy
+
+    if: |
+      github.event.inputs.environment == 'prod' &&
+      github.event.inputs.run_post_deployment == 'true'
+
+    name: PROD Post Deploy
+    runs-on: ubuntu-latest
+    environment: PROD
+
+    steps:
+
+      - name: PROD Post Deployment
+        run: |
+
+          if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
+            echo "Running PROD Post Deployment WITH -b"
+          else
+            echo "Running PROD Post Deployment WITHOUT -b"
           fi
