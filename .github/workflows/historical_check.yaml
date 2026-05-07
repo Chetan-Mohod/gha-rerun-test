@@ -1,0 +1,102 @@
+name: History-Aware-Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+
+  history-check:
+    name: History Check
+    runs-on: ubuntu-latest
+
+    outputs:
+      flag: ${{ steps.check.outputs.flag }}
+
+    steps:
+
+      - name: Check workflow history
+        id: check
+        run: |
+
+          echo "Checking workflow history..."
+
+          runs=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=20)
+
+          flag=false
+
+          for run_id in $(echo "$runs" | jq -r '.workflow_runs[].id'); do
+
+            # Skip current run
+            if [ "$run_id" == "${{ github.run_id }}" ]; then
+              continue
+            fi
+
+            echo ""
+            echo "Checking Run ID: $run_id"
+
+            jobs=$(curl -s \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id/jobs)
+
+            jobA=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB A") | .conclusion')
+
+            jobB=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB B") | .conclusion')
+
+            echo "JOB A: $jobA"
+            echo "JOB B: $jobB"
+
+            if [[ "$jobA" == "success" && "$jobB" == "success" ]]; then
+
+              echo "Historical successful state found"
+
+              flag=true
+
+              break
+            fi
+          done
+
+          echo "flag=$flag" >> $GITHUB_OUTPUT
+
+  jobA:
+    name: JOB A
+    runs-on: ubuntu-latest
+
+    needs:
+      - history-check
+
+    steps:
+      - run: |
+          echo "Running JOB A"
+
+  jobB:
+    name: JOB B
+    runs-on: ubuntu-latest
+
+    needs:
+      - history-check
+
+    steps:
+      - run: |
+          echo "Running JOB B"
+
+  final-job:
+    name: FINAL JOB
+    runs-on: ubuntu-latest
+
+    needs:
+      - history-check
+      - jobA
+      - jobB
+
+    steps:
+
+      - name: Print Final Flag
+        run: |
+
+          echo "History Flag: ${{ needs.history-check.outputs.flag }}"
