@@ -27,7 +27,7 @@ on:
         type: boolean
 
       post_deployment_check:
-        description: 'Use -b'
+        description: 'Enable post deployment'
         required: true
         default: true
         type: boolean
