@@ -1,4 +1,4 @@
-name: History-Aware-Demo
+name: Checkpoint-Demo
 
 on:
   workflow_dispatch:
@@ -13,70 +13,73 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      success_flag: ${{ steps.check.outputs.flag }}
+      run_jobA: ${{ steps.check.outputs.run_jobA }}
+      run_jobB: ${{ steps.check.outputs.run_jobB }}
 
     steps:
-      - name: Check previous runs
+
+      - name: Check previous successful jobs
         id: check
         run: |
 
-          echo "Checking workflow history..."
+          echo "Checking previous workflow history..."
 
-          # Get workflow runs
           runs=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=50")
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=10")
 
-          total_runs=$(echo "$runs" | jq '.total_count')
+          total_runs=$(echo "$runs" | jq '.workflow_runs | length')
 
-          echo "Total runs: $total_runs"
+          echo "Total Runs: $total_runs"
 
-          # FIRST RUN CHECK
+          # Default = run jobs
+          run_jobA=true
+          run_jobB=true
+
+          # FIRST RUN
           if [ "$total_runs" -le 1 ]; then
 
             echo "First run detected"
 
-            echo "flag=true" >> $GITHUB_OUTPUT
+            echo "run_jobA=true" >> $GITHUB_OUTPUT
+            echo "run_jobB=true" >> $GITHUB_OUTPUT
 
             exit 0
           fi
 
-          flag=false
+          # Check ONLY previous run
+          previous_run_id=$(echo "$runs" | jq -r \
+            ".workflow_runs[] | select(.id != ${{ github.run_id }}) | .id" | head -n 1)
 
-          # Loop previous runs
-          for run_id in $(echo "$runs" | jq -r '.workflow_runs[].id'); do
+          echo "Previous Run ID: $previous_run_id"
 
-            # Skip current run
-            if [ "$run_id" == "${{ github.run_id }}" ]; then
-              continue
-            fi
+          jobs=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/$previous_run_id/jobs")
 
-            echo "Checking Run ID: $run_id"
+          jobA_status=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB A") | .conclusion')
 
-            jobs=$(curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id/jobs")
+          jobB_status=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB B") | .conclusion')
 
-            jobA=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB A") | .conclusion')
+          echo "JOB A Previous Status: $jobA_status"
+          echo "JOB B Previous Status: $jobB_status"
 
-            jobB=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB B") | .conclusion')
+          # If already successful -> skip next run
+          if [[ "$jobA_status" == "success" ]]; then
+            run_jobA=false
+          fi
 
-            echo "JOB A = $jobA"
-            echo "JOB B = $jobB"
+          if [[ "$jobB_status" == "success" ]]; then
+            run_jobB=false
+          fi
 
-            if [[ "$jobA" == "success" && "$jobB" == "success" ]]; then
+          echo ""
+          echo "Final Decision:"
+          echo "Run JOB A = $run_jobA"
+          echo "Run JOB B = $run_jobB"
 
-              echo "Historical success found"
-
-              flag=true
-
-              break
-            fi
-          done
-
-          echo "Final Flag = $flag"
-
-          echo "flag=$flag" >> $GITHUB_OUTPUT
+          echo "run_jobA=$run_jobA" >> $GITHUB_OUTPUT
+          echo "run_jobB=$run_jobB" >> $GITHUB_OUTPUT
 
   jobA:
     name: JOB A
@@ -86,8 +89,7 @@ jobs:
     needs:
       - history-check
 
-    # IMPORTANT CONDITION
-    if: needs.history-check.outputs.success_flag == 'true'
+    if: needs.history-check.outputs.run_jobA == 'true'
 
     steps:
       - run: |
@@ -101,23 +103,8 @@ jobs:
     needs:
       - history-check
 
-    # IMPORTANT CONDITION
-    if: needs.history-check.outputs.success_flag == 'true'
+    if: needs.history-check.outputs.run_jobB == 'true'
 
     steps:
       - run: |
           echo "Running JOB B"
-
-  final-job:
-    name: FINAL JOB
-
-    runs-on: ubuntu-latest
-
-    needs:
-      - history-check
-      - jobA
-      - jobB
-
-    steps:
-      - run: |
-          echo "History Flag = ${{ needs.history-check.outputs.success_flag }}"
