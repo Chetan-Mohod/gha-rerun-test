@@ -1,22 +1,24 @@
 name: CD Pipeline
 
 on:
+
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+
   workflow_dispatch:
+
     inputs:
+
       environment:
-        description: 'Select Environment'
+        description: 'Environment'
         required: true
         type: choice
         options:
-          - dev
           - qa
           - uat
           - prod
-
-      image:
-        description: 'Build Version'
-        required: true
-        type: string
 
       run_post_deployment:
         description: 'Run Post Deployment'
@@ -25,33 +27,48 @@ on:
         type: boolean
 
       post_deployment_check:
-        description: 'Use sqlcmd -b'
+        description: 'Use -b'
         required: true
         default: true
         type: boolean
 
 jobs:
 
-  deploy:
+  deploy-dev:
+    if: github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Deploy Application
+    steps:
+
+      - name: DEV Deploy
+        run: echo "Auto Deploying to DEV"
+
+  deploy-manual:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Manual Deploy
         run: |
-          echo "Deploying image: ${{ github.event.inputs.image }}"
-          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Deploying to ${{ github.event.inputs.environment }}"
 
   post-deploy:
+    needs: deploy-manual
+
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.run_post_deployment == 'true'
+
     runs-on: ubuntu-latest
-    needs: deploy
-    if: github.event.inputs.run_post_deployment == 'true'
+
     steps:
-      - name: Post Deployment Script
+
+      - name: Post Deployment
         run: |
+
           if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
-            echo "Running Post Deployment WITH -b"
+            echo "Running WITH -b"
           else
-            echo "Running Post Deployment WITHOUT -b"
+            echo "Running WITHOUT -b"
           fi
