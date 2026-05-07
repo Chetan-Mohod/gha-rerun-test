@@ -10,26 +10,40 @@ permissions:
 jobs:
 
   history-check:
-    name: History Check
     runs-on: ubuntu-latest
 
     outputs:
-      flag: ${{ steps.check.outputs.flag }}
+      success_flag: ${{ steps.check.outputs.flag }}
 
     steps:
-
-      - name: Check workflow history
+      - name: Check previous runs
         id: check
         run: |
 
           echo "Checking workflow history..."
 
+          # Get workflow runs
           runs=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=20)
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=50")
+
+          total_runs=$(echo "$runs" | jq '.total_count')
+
+          echo "Total runs: $total_runs"
+
+          # FIRST RUN CHECK
+          if [ "$total_runs" -le 1 ]; then
+
+            echo "First run detected"
+
+            echo "flag=true" >> $GITHUB_OUTPUT
+
+            exit 0
+          fi
 
           flag=false
 
+          # Loop previous runs
           for run_id in $(echo "$runs" | jq -r '.workflow_runs[].id'); do
 
             # Skip current run
@@ -37,23 +51,22 @@ jobs:
               continue
             fi
 
-            echo ""
             echo "Checking Run ID: $run_id"
 
             jobs=$(curl -s \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id/jobs)
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id/jobs")
 
             jobA=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB A") | .conclusion')
 
             jobB=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB B") | .conclusion')
 
-            echo "JOB A: $jobA"
-            echo "JOB B: $jobB"
+            echo "JOB A = $jobA"
+            echo "JOB B = $jobB"
 
             if [[ "$jobA" == "success" && "$jobB" == "success" ]]; then
 
-              echo "Historical successful state found"
+              echo "Historical success found"
 
               flag=true
 
@@ -61,14 +74,20 @@ jobs:
             fi
           done
 
+          echo "Final Flag = $flag"
+
           echo "flag=$flag" >> $GITHUB_OUTPUT
 
   jobA:
     name: JOB A
+
     runs-on: ubuntu-latest
 
     needs:
       - history-check
+
+    # IMPORTANT CONDITION
+    if: needs.history-check.outputs.success_flag == 'true'
 
     steps:
       - run: |
@@ -76,10 +95,14 @@ jobs:
 
   jobB:
     name: JOB B
+
     runs-on: ubuntu-latest
 
     needs:
       - history-check
+
+    # IMPORTANT CONDITION
+    if: needs.history-check.outputs.success_flag == 'true'
 
     steps:
       - run: |
@@ -87,6 +110,7 @@ jobs:
 
   final-job:
     name: FINAL JOB
+
     runs-on: ubuntu-latest
 
     needs:
@@ -95,8 +119,5 @@ jobs:
       - jobB
 
     steps:
-
-      - name: Print Final Flag
-        run: |
-
-          echo "History Flag: ${{ needs.history-check.outputs.flag }}"
+      - run: |
+          echo "History Flag = ${{ needs.history-check.outputs.success_flag }}"
