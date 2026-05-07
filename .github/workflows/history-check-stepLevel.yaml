@@ -1,0 +1,105 @@
+name: Step-Level-Rerun-Demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+
+  history-check:
+    name: HISTORY CHECK
+    runs-on: ubuntu-latest
+    outputs:
+      run_stepB: ${{ steps.check.outputs.run_stepB }}
+
+    steps:
+      - name: Check all previous rerun attempts for steps
+        id: check
+        run: |
+
+          echo "Checking rerun workflow history for steps..."
+
+          run_stepB=true
+
+          current_attempt=${{ github.run_attempt }}
+          echo "Current Attempt: $current_attempt"
+
+          # FIRST EXECUTION
+          if [ "$current_attempt" -eq 1 ]; then
+            echo "First workflow execution"
+            echo "run_stepB=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Scanning ALL previous attempts..."
+
+          # LOOP ALL PREVIOUS ATTEMPTS
+          for (( attempt=1; attempt<current_attempt; attempt++ )); do
+
+            echo ""
+            echo "Checking Attempt: $attempt"
+
+            jobs=$(curl -s \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/$attempt/jobs")
+
+            # Step-level statuses are exposed as job conclusion only,
+            # so we must track steps via a unique job that contains all steps
+            # We'll treat Step A as "first step" and Step B as "second step"
+
+            stepA_status=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="Main Job") | .steps[] | select(.name=="Step A") | .conclusion')
+            stepB_status=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="Main Job") | .steps[] | select(.name=="Step B") | .conclusion')
+
+            echo "Step A Status: $stepA_status"
+            echo "Step B Status: $stepB_status"
+
+            # IF Step B already succeeded in any previous attempt
+            if [[ "$stepA_status" == "success" && "$stepB_status" == "success" ]]; then
+              echo "Step A and Step B already succeeded previously"
+              echo "Skipping Step B"
+              run_stepB=false
+              break
+            fi
+          done
+
+          echo ""
+          echo "Final Decision"
+          echo "Run Step B: $run_stepB"
+
+          echo "run_stepB=$run_stepB" >> $GITHUB_OUTPUT
+
+  main-job:
+    name: Main Job
+    runs-on: ubuntu-latest
+    needs: history-check
+
+    steps:
+      - name: Step A
+        id: stepA
+        run: |
+          echo "Running Step A"
+
+      - name: Step B
+        id: stepB
+        if: needs.history-check.outputs.run_stepB == 'true'
+        run: |
+          echo "Running Step B"
+          # exit 1   # Uncomment to simulate failure
+
+  final-step:
+    name: FINAL STEP
+    runs-on: ubuntu-latest
+    needs:
+      - history-check
+      - main-job
+    if: always()
+    steps:
+      - run: |
+          echo "================================="
+          echo "Run Attempt : ${{ github.run_attempt }}"
+          echo "Step A RESULT : ${{ needs.main-job.outputs.stepA || 'success' }}"
+          echo "Step B RESULT : ${{ needs.main-job.outputs.stepB || 'skipped' }}"
+          echo "================================="
