@@ -1,0 +1,63 @@
+name: CD Pipeline - Steps
+
+on:
+
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+
+  workflow_dispatch:
+
+    inputs:
+
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - qa
+          - uat
+          - prod
+
+      run_post_deployment:
+        description: 'Run Post Deployment'
+        required: true
+        default: true
+        type: boolean
+
+      post_deployment_check:
+        description: 'Use -b'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: DEV Deployment
+        if: github.event_name == 'workflow_run'
+        run: |
+          echo "Auto Deploying to DEV"
+
+      - name: Manual Deployment
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Deploying to ${{ github.event.inputs.environment }}"
+
+      - name: Post Deployment
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.run_post_deployment == 'true'
+
+        run: |
+
+          if [ "${{ github.event.inputs.post_deployment_check }}" = "true" ]; then
+            echo "Running WITH -b"
+          else
+            echo "Running WITHOUT -b"
+          fi
