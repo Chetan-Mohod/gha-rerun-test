@@ -10,6 +10,8 @@ permissions:
 jobs:
 
   history-check:
+    name: HISTORY CHECK
+
     runs-on: ubuntu-latest
 
     outputs:
@@ -18,19 +20,31 @@ jobs:
 
     steps:
 
-      - name: Check previous successful jobs
+      - name: Check Previous Workflow Jobs
         id: check
         run: |
 
-          echo "Checking previous workflow history..."
+          echo "Checking workflow history..."
 
+          WORKFLOW_NAME="${{ github.workflow }}"
+
+          # Get ONLY this workflow runs
           runs=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=10")
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows")
 
-          total_runs=$(echo "$runs" | jq '.workflow_runs | length')
+          workflow_id=$(echo "$runs" | jq -r \
+            '.workflows[] | select(.name=="'"$WORKFLOW_NAME"'") | .id')
 
-          echo "Total Runs: $total_runs"
+          echo "Workflow ID: $workflow_id"
+
+          workflow_runs=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$workflow_id/runs?per_page=10")
+
+          total_runs=$(echo "$workflow_runs" | jq '.workflow_runs | length')
+
+          echo "Total Workflow Runs: $total_runs"
 
           # Default = run jobs
           run_jobA=true
@@ -47,8 +61,8 @@ jobs:
             exit 0
           fi
 
-          # Check ONLY previous run
-          previous_run_id=$(echo "$runs" | jq -r \
+          # Get PREVIOUS RUN only
+          previous_run_id=$(echo "$workflow_runs" | jq -r \
             ".workflow_runs[] | select(.id != ${{ github.run_id }}) | .id" | head -n 1)
 
           echo "Previous Run ID: $previous_run_id"
@@ -57,14 +71,16 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/actions/runs/$previous_run_id/jobs")
 
-          jobA_status=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB A") | .conclusion')
+          jobA_status=$(echo "$jobs" | jq -r \
+            '.jobs[] | select(.name=="JOB A") | .conclusion')
 
-          jobB_status=$(echo "$jobs" | jq -r '.jobs[] | select(.name=="JOB B") | .conclusion')
+          jobB_status=$(echo "$jobs" | jq -r \
+            '.jobs[] | select(.name=="JOB B") | .conclusion')
 
           echo "JOB A Previous Status: $jobA_status"
           echo "JOB B Previous Status: $jobB_status"
 
-          # If already successful -> skip next run
+          # SKIP already successful jobs
           if [[ "$jobA_status" == "success" ]]; then
             run_jobA=false
           fi
@@ -74,9 +90,9 @@ jobs:
           fi
 
           echo ""
-          echo "Final Decision:"
-          echo "Run JOB A = $run_jobA"
-          echo "Run JOB B = $run_jobB"
+          echo "Final Decisions"
+          echo "Run JOB A: $run_jobA"
+          echo "Run JOB B: $run_jobB"
 
           echo "run_jobA=$run_jobA" >> $GITHUB_OUTPUT
           echo "run_jobB=$run_jobB" >> $GITHUB_OUTPUT
@@ -108,3 +124,23 @@ jobs:
     steps:
       - run: |
           echo "Running JOB B"
+
+  final-job:
+    name: FINAL JOB
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - history-check
+      - jobA
+      - jobB
+
+    if: always()
+
+    steps:
+      - run: |
+
+          echo "================================="
+          echo "JOB A RESULT: ${{ needs.jobA.result }}"
+          echo "JOB B RESULT: ${{ needs.jobB.result }}"
+          echo "================================="
