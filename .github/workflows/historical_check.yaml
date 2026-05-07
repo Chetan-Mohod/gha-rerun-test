@@ -18,19 +18,20 @@ jobs:
       run_jobB: ${{ steps.check.outputs.run_jobB }}
 
     steps:
-      - name: Check previous rerun attempt jobs
+      - name: Check all previous rerun attempts
         id: check
         run: |
 
           echo "Checking rerun workflow history..."
 
-          # Default value
           run_jobB=true
 
-          echo "Current Run Attempt: ${{ github.run_attempt }}"
+          current_attempt=${{ github.run_attempt }}
+
+          echo "Current Attempt: $current_attempt"
 
           # FIRST EXECUTION
-          if [ "${{ github.run_attempt }}" -eq 1 ]; then
+          if [ "$current_attempt" -eq 1 ]; then
 
             echo "First workflow execution"
 
@@ -39,36 +40,40 @@ jobs:
             exit 0
           fi
 
-          echo "Rerun detected"
+          echo "Scanning ALL previous attempts..."
 
-          # Previous attempt
-          previous_attempt=$((${{ github.run_attempt }} - 1))
+          # LOOP ALL PREVIOUS ATTEMPTS
+          for (( attempt=1; attempt<current_attempt; attempt++ ))
+          do
 
-          echo "Previous Attempt: $previous_attempt"
+            echo ""
+            echo "Checking Attempt: $attempt"
 
-          # Fetch jobs from previous attempt of SAME RUN
-          jobs=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/$previous_attempt/jobs")
+            jobs=$(curl -s \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/$attempt/jobs")
 
-          echo "$jobs"
+            jobA_status=$(echo "$jobs" | jq -r \
+              '.jobs[] | select(.name=="JOB A") | .conclusion')
 
-          jobA_status=$(echo "$jobs" | jq -r \
-            '.jobs[] | select(.name=="JOB A") | .conclusion')
+            jobB_status=$(echo "$jobs" | jq -r \
+              '.jobs[] | select(.name=="JOB B") | .conclusion')
 
-          jobB_status=$(echo "$jobs" | jq -r \
-            '.jobs[] | select(.name=="JOB B") | .conclusion')
+            echo "JOB A Status: $jobA_status"
+            echo "JOB B Status: $jobB_status"
 
-          echo "Previous JOB A Status: $jobA_status"
-          echo "Previous JOB B Status: $jobB_status"
+            # IF JOB B EVER SUCCEEDED
+            if [[ "$jobA_status" == "success" && "$jobB_status" == "success" ]]; then
 
-          # Skip JOB B if BOTH jobs already succeeded
-          if [[ "$jobA_status" == "success" && "$jobB_status" == "success" ]]; then
+              echo ""
+              echo "Historical successful state found"
+              echo "Skipping JOB B"
 
-            echo "JOB A and JOB B already succeeded previously"
+              run_jobB=false
 
-            run_jobB=false
-          fi
+              break
+            fi
+          done
 
           echo ""
           echo "Final Decision"
@@ -97,7 +102,7 @@ jobs:
       - history-check
       - jobA
 
-    # SKIP IF ALREADY SUCCESSFUL IN PREVIOUS ATTEMPT
+    # SKIP IF ALREADY SUCCESSFUL IN ANY OLD ATTEMPT
     if: needs.history-check.outputs.run_jobB == 'true'
 
     steps:
