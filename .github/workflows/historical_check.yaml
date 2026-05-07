@@ -1,4 +1,4 @@
-name: Rerun-Aware-Demo
+name: Rerun-Recovery-Demo
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      run_post_deployment: ${{ steps.check.outputs.run_post_deployment }}
+      run_jobB: ${{ steps.check.outputs.run_jobB }}
 
     steps:
       - name: Check previous rerun attempt jobs
@@ -25,7 +25,7 @@ jobs:
           echo "Checking rerun workflow history..."
 
           # Default value
-          run_post_deployment=true
+          run_jobB=true
 
           echo "Current Run Attempt: ${{ github.run_attempt }}"
 
@@ -34,7 +34,7 @@ jobs:
 
             echo "First workflow execution"
 
-            echo "run_post_deployment=true" >> $GITHUB_OUTPUT
+            echo "run_jobB=true" >> $GITHUB_OUTPUT
 
             exit 0
           fi
@@ -53,31 +53,31 @@ jobs:
 
           echo "$jobs"
 
-          deployment_status=$(echo "$jobs" | jq -r \
-            '.jobs[] | select(.name=="Deployment") | .conclusion')
+          jobA_status=$(echo "$jobs" | jq -r \
+            '.jobs[] | select(.name=="JOB A") | .conclusion')
 
-          post_deployment_status=$(echo "$jobs" | jq -r \
-            '.jobs[] | select(.name=="Post Deployment") | .conclusion')
+          jobB_status=$(echo "$jobs" | jq -r \
+            '.jobs[] | select(.name=="JOB B") | .conclusion')
 
-          echo "Previous Deployment Status: $deployment_status"
-          echo "Previous Post Deployment Status: $post_deployment_status"
+          echo "Previous JOB A Status: $jobA_status"
+          echo "Previous JOB B Status: $jobB_status"
 
-          # Skip post deployment if BOTH jobs already succeeded
-          if [[ "$deployment_status" == "success" && "$post_deployment_status" == "success" ]]; then
+          # Skip JOB B if BOTH jobs already succeeded
+          if [[ "$jobA_status" == "success" && "$jobB_status" == "success" ]]; then
 
-            echo "Deployment and Post Deployment already succeeded previously"
+            echo "JOB A and JOB B already succeeded previously"
 
-            run_post_deployment=false
+            run_jobB=false
           fi
 
           echo ""
           echo "Final Decision"
-          echo "Run Post Deployment: $run_post_deployment"
+          echo "Run JOB B: $run_jobB"
 
-          echo "run_post_deployment=$run_post_deployment" >> $GITHUB_OUTPUT
+          echo "run_jobB=$run_jobB" >> $GITHUB_OUTPUT
 
-  deployment:
-    name: Deployment
+  jobA:
+    name: JOB A
 
     runs-on: ubuntu-latest
 
@@ -86,23 +86,23 @@ jobs:
     # ALWAYS RUN
     steps:
       - run: |
-          echo "Running Deployment"
+          echo "Running JOB A"
 
-  post-deployment:
-    name: Post Deployment
+  jobB:
+    name: JOB B
 
     runs-on: ubuntu-latest
 
     needs:
       - history-check
-      - deployment
+      - jobA
 
     # SKIP IF ALREADY SUCCESSFUL IN PREVIOUS ATTEMPT
-    if: needs.history-check.outputs.run_post_deployment == 'true'
+    if: needs.history-check.outputs.run_jobB == 'true'
 
     steps:
       - run: |
-          echo "Running Post Deployment"
+          echo "Running JOB B"
 
           # Uncomment for testing
           # exit 1
@@ -114,8 +114,8 @@ jobs:
 
     needs:
       - history-check
-      - deployment
-      - post-deployment
+      - jobA
+      - jobB
 
     if: always()
 
@@ -124,6 +124,6 @@ jobs:
 
           echo "================================="
           echo "Run Attempt : ${{ github.run_attempt }}"
-          echo "Deployment RESULT      : ${{ needs.deployment.result }}"
-          echo "Post Deployment RESULT : ${{ needs.post-deployment.result }}"
+          echo "JOB A RESULT : ${{ needs.jobA.result }}"
+          echo "JOB B RESULT : ${{ needs.jobB.result }}"
           echo "================================="
